@@ -19,7 +19,6 @@ from kombu.mixins import ConsumerMixin
 import six
 
 from . import api
-from .util import adict
 
 log = logging.getLogger(__name__)
 

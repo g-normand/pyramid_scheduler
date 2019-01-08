@@ -137,3 +137,23 @@ def dt2ts(dt):
 # end of $Id$
 # $ChangeLog$
 #------------------------------------------------------------------------------
+
+def combine_opts(global_config, prefix, local_config={}):
+    """
+    Returns a subdictionary from keys and values of  ``global_config`` where
+    the key starts with the given prefix, combined with options from
+    local_config. The keys in the subdictionary have the prefix removed.
+
+    :type global_config: dict
+    :type prefix: str
+    :type local_config: dict
+    :rtype: dict
+    """
+    prefixlen = len(prefix)
+    subconf = {}
+    for key, value in global_config.items():
+        if key.startswith(prefix):
+            key = key[prefixlen:]
+            subconf[key] = value
+    subconf.update(local_config)
+    return subconf
