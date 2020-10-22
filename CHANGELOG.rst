@@ -3,12 +3,16 @@ ChangeLog
 =========
 
 
-v0.3.4
-======
+v1.0 (2020-10-20)
+=================
+
+* Working with kombu 5.0.2 and APScheduler 3.6.3
+
+v0.3.4 (2019-03-05)
+===================
 
 * Added support for alternate specification of job execution via
   `scheduler.delegator` config
-
 
 v0.3.3
 ======

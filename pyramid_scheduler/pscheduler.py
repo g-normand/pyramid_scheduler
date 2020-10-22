@@ -22,7 +22,6 @@ import logging
 import threading
 import transaction
 
-from pyramid.scripts.pserve import install_reloader, _turn_sigterm_into_systemexit
 from pyramid.paster import setup_logging, get_app
 
 #------------------------------------------------------------------------------
@@ -135,7 +134,6 @@ def main():
       #       a "rude" exit and does not allow APS's atexit()
       #       registrations to kick in... use a better
       #       implementation!
-      install_reloader(options.reload_interval, [options.configUri])
     else:
       return restart_with_reloader(options)
 
