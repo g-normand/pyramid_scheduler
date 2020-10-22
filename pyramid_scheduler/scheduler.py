@@ -20,14 +20,12 @@ import smtplib
 from contextlib import contextmanager
 
 import transaction
-import apscheduler
-import apscheduler.scheduler
-import apscheduler.events
+import apscheduler.events as ap_events
+from apscheduler.schedulers.background import BackgroundScheduler
 from pyramid.settings import asbool, aslist
-from apscheduler.jobstores.ram_store import RAMJobStore
-from apscheduler.util import combine_opts, ref_to_obj, obj_to_ref
+from apscheduler.util import ref_to_obj, obj_to_ref
 
-from .util import adict, asdur, addPrefix, makeID, cull, now, ts2dt, dt2ts, resolve
+from .util import adict, asdur, makeID, cull, now, ts2dt, dt2ts, resolve, combine_opts
 from . import api, broker
 
 log = logging.getLogger(__name__)
@@ -72,7 +70,7 @@ class Scheduler(object):
 
   #----------------------------------------------------------------------------
   def configure(self, settings, prefix='scheduler.'):
-    self.confdict = conf = combine_opts(settings, prefix)
+    conf = combine_opts(settings, prefix)
     self.conf.combined     = asbool(conf.get('combined', True))
     self.conf.housekeeping = asdur(conf.get('housekeeping', '24h'))
     self.conf.hkpostcall   = resolve(conf.get('housekeeping.append', None))
@@ -142,13 +140,10 @@ class Scheduler(object):
     '''
     self.broker.startConsumer(queues)
     log.info('starting APS job execution daemon')
-    self.aps = apscheduler.scheduler.Scheduler()
-    self.aps.add_jobstore(RAMJobStore(), self.ramstore)
-    apsconf = addPrefix(self.confdict, 'apscheduler.')
-    apsconf['apscheduler.standalone'] = 'false'
-    self.aps.configure(apsconf, daemonic=daemon)
-    self.aps.add_interval_job(housekeeping, args=(self.id,),
-                              seconds=self.conf.housekeeping, jobstore=self.ramstore)
+    self.aps = BackgroundScheduler()
+    self.aps.add_job(housekeeping, 'interval',
+                     args=(self.id,),
+                     seconds=self.conf.housekeeping)
     self.aps.add_listener(self._apsEvent)
     self.aps.start()
 
@@ -174,28 +169,19 @@ class Scheduler(object):
     if getattr(event, 'exception', None) is not None:
       return self._apsError(event)
     if event.code in (
-      apscheduler.events.EVENT_SCHEDULER_START,
-      apscheduler.events.EVENT_SCHEDULER_SHUTDOWN,
-      apscheduler.events.EVENT_JOBSTORE_ADDED,
-      apscheduler.events.EVENT_JOBSTORE_REMOVED,
-      #apscheduler.events.EVENT_JOBSTORE_JOB_ADDED,
-      #apscheduler.events.EVENT_JOBSTORE_JOB_REMOVED,
-      #apscheduler.events.EVENT_JOB_EXECUTED,
-      #apscheduler.events.EVENT_JOB_ERROR,
-      #apscheduler.events.EVENT_JOB_MISSED,
+      ap_events.EVENT_SCHEDULER_START,
+      ap_events.EVENT_SCHEDULER_SHUTDOWN,
+      ap_events.EVENT_JOBSTORE_ADDED,
+      ap_events.EVENT_JOBSTORE_REMOVED,
       ):
       # these can be ignored
       return
-    if isinstance(event, apscheduler.events.JobStoreEvent) \
-        and event.alias == self.ramstore:
-      # this is an "internal" event... squelch it.
-      return
-    if event.code == apscheduler.events.EVENT_JOBSTORE_JOB_ADDED \
+    if event.code == ap_events.EVENT_JOB_ADDED \
         and hasattr(event, 'job'):
       return self._notify(api.Event(api.Event.JOB_CREATED, job=event.job))
-    if event.code == apscheduler.events.EVENT_JOB_EXECUTED:
-      return self._notify(api.Event(api.Event.JOB_EXECUTED, job=event.job))
-    if event.code == apscheduler.events.EVENT_JOBSTORE_JOB_REMOVED \
+    if event.code == ap_events.EVENT_JOB_EXECUTED:
+      return self._notify(api.Event(api.Event.JOB_EXECUTED))
+    if event.code == ap_events.EVENT_JOB_REMOVED \
         and hasattr(event, 'job'):
       return self._notify(api.Event(api.Event.JOB_REMOVED, job=event.job))
     # todo: any other messages that i should pass through?
@@ -307,18 +293,18 @@ class Scheduler(object):
       return
     if job.type == 'date':
       params.date = self._getdt(params.date, asStart=True, grace=params.misfire_grace_time)
-      self.aps.add_date_job(
-        pyramid_scheduler_wrapper,
+      self.aps.add_job(
+        pyramid_scheduler_wrapper, trigger='date',
         args=(self.id, job.id, job.task), **params)
       return
     if job.type == 'interval':
-      self.aps.add_interval_job(
-        pyramid_scheduler_wrapper,
+      self.aps.add_job(
+        pyramid_scheduler_wrapper, trigger='interval',
         args=(self.id, job.id, job.task), **params)
       return
     if job.type == 'cron':
-      self.aps.add_cron_job(
-        pyramid_scheduler_wrapper,
+      self.aps.add_job(
+        pyramid_scheduler_wrapper, trigger='cron',
         args=(self.id, job.id, job.task), **params)
       return
     log.error('unknown job scheduling type "%s" in event: %r', job.type, event)

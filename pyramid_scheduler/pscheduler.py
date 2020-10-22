@@ -19,7 +19,6 @@ import subprocess
 import time
 import argparse
 import logging
-import threading
 import transaction
 
 from pyramid.paster import setup_logging, get_app
@@ -139,7 +138,6 @@ def main():
 
   try:
     log.debug('loading application from "%s"', options.configUri)
-    from pyramid_scheduler.scheduler import Scheduler
     app = get_app(options.configUri, name=options.appName)
     if not hasattr(app.registry, 'scheduler'):
       log.error('application did not load a scheduler (try'
